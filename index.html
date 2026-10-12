@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Spotlight</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  /* Layout: one full-screen black stage with a single draggable white circle. Deliberately single-theme (dark). */
+  :root {
+    --stage: #000;
+    --light: #fff;
+    --hint-fg: rgba(255, 255, 255, 0.55);
+    --hint-bg: rgba(255, 255, 255, 0.08);
+    --ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: dark;
+    padding: 0 !important;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--stage);
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #spot {
+    position: fixed;
+    left: 0;
+    top: 0;
+    border-radius: 50%;
+    background: var(--light);
+    cursor: grab;
+    will-change: transform;
+    transition: background-color 0.4s;
+  }
+  @media (prefers-reduced-motion: reduce) { #spot { transition: none; } }
+  #spot.dragging { cursor: grabbing; }
+  #spot:focus-visible { outline: 2px dashed var(--hint-fg); outline-offset: 6px; }
+  #hint {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    max-width: calc(100% - 32px);
+    box-sizing: border-box;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--hint-bg);
+    color: var(--hint-fg);
+    font: 13px/1.4 var(--ui);
+    text-align: center;
+    transition: opacity 0.6s;
+    pointer-events: none;
+  }
+  #hint.hide { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) { #hint { transition: none; } }
+</style>
+
+<div id="spot" tabindex="0" role="slider" aria-label="Spotlight position"></div>
+<div id="hint">Drag the circle · scroll, pinch or +/− to resize · 1–9 or C to change colour · S for soft edge · double-click for fullscreen</div>
+
+<script>
+  const spot = document.getElementById('spot');
+  const hint = document.getElementById('hint');
+
+  const state = {
+    x: window.innerWidth / 2,
+    y: window.innerHeight / 2,
+    r: Math.min(window.innerWidth, window.innerHeight) * 0.18,
+    soft: false,
+    color: 0,
+  };
+
+  // Keys 1–9 pick a colour; C cycles through them.
+  const colors = [
+    '#ffffff', // 1 white
+    '#ffe6b8', // 2 warm white
+    '#ffb000', // 3 amber
+    '#ff2a2a', // 4 red
+    '#2aff5a', // 5 green
+    '#2a6bff', // 6 blue
+    '#ff3fb4', // 7 pink
+    '#a040ff', // 8 purple
+    '#2ae6ff', // 9 cyan
+  ];
+
+  // `state` is where your finger or mouse is; `shown` is the circle, pulled towards it
+  // by a damped spring so it lags, carries momentum and settles with a small overshoot.
+  const shown = { x: state.x, y: state.y, r: state.r };
+  const vel = { x: 0, y: 0, r: 0 };
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const STIFFNESS = 90; // pull strength: higher = follows more tightly
+  const DAMPING = 13;   // friction: lower = more swing and overshoot
+  const STEP = 1 / 240; // fixed physics step, so it feels the same at any refresh rate
+  let lastFrame = 0;
+  let frame = 0;
+
+  function tick(now) {
+    let dt = Math.min((now - (lastFrame || now)) / 1000, 0.1);
+    lastFrame = now;
+    let moving = false;
+    for (const key of ['x', 'y', 'r']) {
+      if (reduceMotion) { shown[key] = state[key]; vel[key] = 0; continue; }
+      for (let t = 0; t < dt; t += STEP) {
+        const h = Math.min(STEP, dt - t);
+        vel[key] += ((state[key] - shown[key]) * STIFFNESS - vel[key] * DAMPING) * h;
+        shown[key] += vel[key] * h;
+      }
+      if (Math.abs(state[key] - shown[key]) < 0.05 && Math.abs(vel[key]) < 0.05) {
+        shown[key] = state[key];
+        vel[key] = 0;
+      } else {
+        moving = true;
+      }
+    }
+    render();
+    if (moving) frame = requestAnimationFrame(tick);
+    else { frame = 0; lastFrame = 0; }
+  }
+
+  function animate() {
+    if (!frame) frame = requestAnimationFrame(tick);
+  }
+
+  function render() {
+    const { x, y, r } = shown;
+    spot.style.width = r * 2 + 'px';
+    spot.style.height = r * 2 + 'px';
+    spot.style.transform = `translate(${x - r}px, ${y - r}px)`;
+    const c = colors[state.color];
+    spot.style.background = c;
+    spot.style.boxShadow = state.soft ? `0 0 ${r * 0.5}px ${r * 0.15}px ${c}` : 'none';
+  }
+
+  function clamp() {
+    const maxR = Math.max(window.innerWidth, window.innerHeight);
+    state.r = Math.min(Math.max(state.r, 10), maxR);
+    state.x = Math.min(Math.max(state.x, 0), window.innerWidth);
+    state.y = Math.min(Math.max(state.y, 0), window.innerHeight);
+  }
+
+  function update() { clamp(); render(); animate(); showHint(); }
+
+  // Hint fades after a few seconds of no interaction, so it doesn't spill light.
+  let hintTimer;
+  function showHint() {
+    hint.classList.remove('hide');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => hint.classList.add('hide'), 3000);
+  }
+
+  // Dragging and pinch-to-resize with pointer events (mouse, touch, pen).
+  const pointers = new Map();
+  let grab = null;
+  let pinch = null;
+
+  function pinchDistance() {
+    const [a, b] = [...pointers.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  document.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      grab = null;
+      pinch = { dist: pinchDistance(), r: state.r };
+      return;
+    }
+    // Grab the circle wherever you press, keeping the offset if you pressed on it.
+    const onSpot = Math.hypot(e.clientX - state.x, e.clientY - state.y) <= state.r;
+    grab = onSpot ? { dx: state.x - e.clientX, dy: state.y - e.clientY } : { dx: 0, dy: 0 };
+    state.x = e.clientX + grab.dx;
+    state.y = e.clientY + grab.dy;
+    spot.classList.add('dragging');
+    document.documentElement.setPointerCapture?.(e.pointerId);
+    update();
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch && pointers.size === 2) {
+      state.r = pinch.r * (pinchDistance() / pinch.dist);
+      update();
+    } else if (grab) {
+      state.x = e.clientX + grab.dx;
+      state.y = e.clientY + grab.dy;
+      update();
+    }
+  });
+
+  function release(e) {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (pointers.size === 0) { grab = null; spot.classList.remove('dragging'); }
+  }
+  document.addEventListener('pointerup', release);
+  document.addEventListener('pointercancel', release);
+
+  document.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    state.r *= Math.exp(-e.deltaY * 0.0015);
+    update();
+  }, { passive: false });
+
+  document.addEventListener('keydown', (e) => {
+    const step = e.shiftKey ? 40 : 10;
+    switch (e.key) {
+      case '+': case '=': state.r *= 1.1; break;
+      case '-': case '_': state.r /= 1.1; break;
+      case 'ArrowLeft': state.x -= step; break;
+      case 'ArrowRight': state.x += step; break;
+      case 'ArrowUp': state.y -= step; break;
+      case 'ArrowDown': state.y += step; break;
+      case 's': case 'S': state.soft = !state.soft; break;
+      case 'c': case 'C': state.color = (state.color + 1) % colors.length; break;
+      case '1': case '2': case '3': case '4': case '5':
+      case '6': case '7': case '8': case '9': state.color = Number(e.key) - 1; break;
+      case 'h': case 'H': hint.classList.add('hide'); return;
+      case 'f': case 'F': toggleFullscreen(); return;
+      default: return;
+    }
+    e.preventDefault();
+    update();
+  });
+
+  function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.documentElement.requestFullscreen?.().catch(() => {});
+    } catch (_) {}
+  }
+  document.addEventListener('dblclick', toggleFullscreen);
+
+  window.addEventListener('resize', update);
+
+  // Keep the screen awake while presenting, where allowed.
+  async function keepAwake() {
+    try { await navigator.wakeLock?.request('screen'); } catch (_) {}
+  }
+  keepAwake();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
+
+  update();
+</script>

@@ -10,4 +10,4 @@ Live at https://pineapplesaul.github.io/spotlight/
 - Scroll, pinch or `+` / `-` to resize
 - `1`-`9` pick a colour, `C` cycles colours
 - `S` toggles a soft edge
-- `F` or double-click for fullscreen, `H` hides the hint
+- `F` or double-click for fullscreen, `H` shows or hides the controls hint (it also hides as soon as you click)

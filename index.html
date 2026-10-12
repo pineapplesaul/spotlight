@@ -58,7 +58,7 @@
 </style>
 
 <div id="spot" tabindex="0" role="slider" aria-label="Spotlight position"></div>
-<div id="hint">Drag the circle · scroll, pinch or +/− to resize · 1–9 or C to change colour · S for soft edge · double-click for fullscreen</div>
+<div id="hint">Drag the circle · scroll, pinch or +/− to resize · 1–9 or C to change colour · S for soft edge · double-click for fullscreen · H to show this again</div>
 
 <script>
   const spot = document.getElementById('spot');
@@ -140,10 +140,14 @@
     state.y = Math.min(Math.max(state.y, 0), window.innerHeight);
   }
 
-  function update() { clamp(); render(); animate(); showHint(); }
+  function update() { clamp(); render(); animate(); }
 
   // Hint fades after a few seconds of no interaction, so it doesn't spill light.
   let hintTimer;
+  function hideHint() {
+    clearTimeout(hintTimer);
+    hint.classList.add('hide');
+  }
   function showHint() {
     hint.classList.remove('hide');
     clearTimeout(hintTimer);
@@ -161,6 +165,7 @@
   }
 
   document.addEventListener('pointerdown', (e) => {
+    hideHint();
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
       grab = null;
@@ -217,7 +222,7 @@
       case 'c': case 'C': state.color = (state.color + 1) % colors.length; break;
       case '1': case '2': case '3': case '4': case '5':
       case '6': case '7': case '8': case '9': state.color = Number(e.key) - 1; break;
-      case 'h': case 'H': hint.classList.add('hide'); return;
+      case 'h': case 'H': hint.classList.contains('hide') ? showHint() : hideHint(); return;
       case 'f': case 'F': toggleFullscreen(); return;
       default: return;
     }
@@ -243,4 +248,5 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
 
   update();
+  showHint();
 </script>

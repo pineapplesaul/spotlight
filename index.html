@@ -34,9 +34,8 @@
     transition: background-color 0.4s;
   }
   @media (prefers-reduced-motion: reduce) { #spot { transition: none; } }
-  /* Hide the mouse pointer while dragging so only the light is visible. */
-  html.dragging, html.dragging * { cursor: none !important; }
-  #spot:focus-visible { outline: 2px dashed var(--hint-fg); outline-offset: 6px; }
+  /* Never show the mouse pointer, so only the light is visible on camera. */
+  html, html * { cursor: none !important; }
   #hint {
     position: fixed;
     left: 50%;
@@ -57,8 +56,8 @@
   @media (prefers-reduced-motion: reduce) { #hint { transition: none; } }
 </style>
 
-<div id="spot" tabindex="0" role="slider" aria-label="Spotlight position"></div>
-<div id="hint">Drag the circle · scroll, pinch or +/− to resize · 1–9 or C to change colour · S for soft edge · double-click for fullscreen · H to show this again</div>
+<div id="spot" aria-hidden="true"></div>
+<div id="hint" class="hide">Drag the circle · scroll, pinch or +/− to resize · 1–9 or C to change colour · S for soft edge · double-click for fullscreen · H shows this help</div>
 
 <script>
   const spot = document.getElementById('spot');
@@ -248,5 +247,4 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) keepAwake(); });
 
   update();
-  showHint();
 </script>

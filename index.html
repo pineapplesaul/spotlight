@@ -34,7 +34,8 @@
     transition: background-color 0.4s;
   }
   @media (prefers-reduced-motion: reduce) { #spot { transition: none; } }
-  #spot.dragging { cursor: grabbing; }
+  /* Hide the mouse pointer while dragging so only the light is visible. */
+  html.dragging, html.dragging * { cursor: none !important; }
   #spot:focus-visible { outline: 2px dashed var(--hint-fg); outline-offset: 6px; }
   #hint {
     position: fixed;
@@ -171,7 +172,7 @@
     grab = onSpot ? { dx: state.x - e.clientX, dy: state.y - e.clientY } : { dx: 0, dy: 0 };
     state.x = e.clientX + grab.dx;
     state.y = e.clientY + grab.dy;
-    spot.classList.add('dragging');
+    document.documentElement.classList.add('dragging');
     document.documentElement.setPointerCapture?.(e.pointerId);
     update();
   });
@@ -192,7 +193,7 @@
   function release(e) {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
-    if (pointers.size === 0) { grab = null; spot.classList.remove('dragging'); }
+    if (pointers.size === 0) { grab = null; document.documentElement.classList.remove('dragging'); }
   }
   document.addEventListener('pointerup', release);
   document.addEventListener('pointercancel', release);
